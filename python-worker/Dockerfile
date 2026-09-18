@@ -51,12 +51,14 @@ ARG CAMOUFOX_BROWSER_RELEASE=beta.28
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --upgrade pip \
     && pip install -r /app/requirements.txt
-RUN python -m playwright install --with-deps chromium
+RUN python -m playwright install-deps chromium
+RUN python -m playwright install --no-shell chromium
 RUN --mount=type=cache,target=/root/.npm \
     cd /app/tools/pay153_checkout \
     && npm ci --omit=dev \
     && node -e "require('jsdom')"
-RUN python /app/install_camoufox.py \
+RUN --mount=type=cache,target=/root/.cache/camoufox-downloads \
+    python /app/install_camoufox.py \
     && CAMOUFOX_BIN="$(python -c 'from camoufox.pkgman import launch_path; print(launch_path())')" \
     && test -x "$CAMOUFOX_BIN" \
     && "$CAMOUFOX_BIN" --version \

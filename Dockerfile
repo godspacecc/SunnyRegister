@@ -22,8 +22,14 @@ FROM debian:bookworm-slim AS runtime
 LABEL org.opencontainers.image.title="SunnyRegister" \
       org.opencontainers.image.description="SunnyRegister Go backend and bundled React frontend"
 WORKDIR /app
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates tzdata \
+COPY --from=backend-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+RUN for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do \
+      if [ -f "$source" ]; then \
+        sed -i 's|http://deb.debian.org|https://deb.debian.org|g; s|http://security.debian.org|https://security.debian.org|g' "$source"; \
+      fi; \
+    done \
+    && apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true update \
+    && apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true install -y --no-install-recommends ca-certificates tzdata \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=backend-builder /out/sunnyregister-go /app/sunnyregister-go
 ENV PORT=8000 \

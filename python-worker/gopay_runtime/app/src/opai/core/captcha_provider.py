@@ -261,6 +261,23 @@ def _captcha_browser_context_options(
     return options
 
 
+def _captcha_browser_launch_options(
+    proxy_settings: dict[str, str] | None,
+) -> dict[str, Any]:
+    options: dict[str, Any] = {
+        "headless": True,
+        "args": ["--disable-blink-features=AutomationControlled"],
+    }
+    executable = str(os.environ.get("OPAI_CAPTCHA_BROWSER_EXECUTABLE") or "").strip()
+    if executable:
+        options["executable_path"] = executable
+    else:
+        options["channel"] = "chromium"
+    if proxy_settings:
+        options["proxy"] = proxy_settings
+    return options
+
+
 def capture_live_captcha_session(
     website_url: str,
     *,
@@ -371,15 +388,7 @@ def capture_live_captcha_session(
                     state["dynamic_js_url"] = _dynamic_js_url(state["static_path"])
                 report("CAPTCHA InitCaptcha response captured")
 
-        launch_kwargs: dict[str, Any] = {
-            "headless": True,
-            "args": ["--disable-blink-features=AutomationControlled"],
-        }
-        executable = str(os.environ.get("OPAI_CAPTCHA_BROWSER_EXECUTABLE") or "").strip()
-        if executable:
-            launch_kwargs["executable_path"] = executable
-        if proxy_settings:
-            launch_kwargs["proxy"] = proxy_settings
+        launch_kwargs = _captcha_browser_launch_options(proxy_settings)
         report(f"CAPTCHA browser route: {route_name}")
         browser = playwright.chromium.launch(**launch_kwargs)
         try:

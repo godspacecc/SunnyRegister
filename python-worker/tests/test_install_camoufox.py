@@ -55,3 +55,65 @@ def test_download_with_resume_retries_partial_response(monkeypatch, tmp_path: Pa
 
     assert target.read_bytes() == payload
     assert ranges == [None, "bytes=8-"]
+
+
+def test_download_with_resume_accepts_complete_cached_file(monkeypatch, tmp_path: Path) -> None:
+    payload = b"complete-browser-archive"
+    target = tmp_path / "camoufox.zip"
+    target.write_bytes(payload)
+
+    class RangeNotSatisfiableResponse:
+        status_code = 416
+        headers = {"Content-Range": f"bytes */{len(payload)}"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+        def raise_for_status(self) -> None:
+            raise install_camoufox.requests.HTTPError("range not satisfiable")
+
+    monkeypatch.setattr(
+        install_camoufox.requests,
+        "get",
+        lambda *_args, **_kwargs: RangeNotSatisfiableResponse(),
+    )
+
+    install_camoufox.download_with_resume(
+        "https://example.invalid/camoufox.zip",
+        target,
+        attempts=1,
+    )
+
+    assert target.read_bytes() == payload
+
+
+def test_install_browser_uses_resumable_fetcher(monkeypatch) -> None:
+    installers: list[str] = []
+
+    class DirectFetcher:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def install(self, *, replace: bool) -> None:
+            del replace
+            installers.append("direct")
+
+    class ResumableFetcher(DirectFetcher):
+        def install(self, *, replace: bool) -> None:
+            del replace
+            installers.append("resumable")
+
+    monkeypatch.setattr(install_camoufox, "CamoufoxFetcher", DirectFetcher)
+    monkeypatch.setattr(
+        install_camoufox,
+        "ResumableCamoufoxFetcher",
+        ResumableFetcher,
+        raising=False,
+    )
+
+    install_camoufox.install_browser()
+
+    assert installers == ["resumable"]

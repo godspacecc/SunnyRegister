@@ -183,6 +183,32 @@ def test_browser_context_matches_payment_fingerprint_and_new_default() -> None:
     assert "Chrome/151.0.0.0" in default["user_agent"]
 
 
+def test_headless_captcha_uses_full_bundled_chromium_without_shell(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPAI_CAPTCHA_BROWSER_EXECUTABLE", raising=False)
+
+    options = captcha_provider._captcha_browser_launch_options(None)
+
+    assert options["headless"] is True
+    assert options["channel"] == "chromium"
+    assert "executable_path" not in options
+
+
+def test_headless_captcha_preserves_explicit_browser_executable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPAI_CAPTCHA_BROWSER_EXECUTABLE", "/opt/chromium")
+
+    options = captcha_provider._captcha_browser_launch_options(
+        {"server": "http://proxy.example:8080"}
+    )
+
+    assert options["executable_path"] == "/opt/chromium"
+    assert "channel" not in options
+    assert options["proxy"] == {"server": "http://proxy.example:8080"}
+
+
 def test_browser_proxy_routes_preserve_proxy_and_enforce_solverify_http() -> None:
     socks_proxy = "socks5://user:pass@proxy.example:1080"
 

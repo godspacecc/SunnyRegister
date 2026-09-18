@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import os
 import platform
+import shutil
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 from camoufox.addons import DefaultAddons, maybe_download_addons
@@ -30,6 +32,9 @@ CAMOUFOX_VERSION = os.getenv("CAMOUFOX_BROWSER_VERSION", "152.0.4")
 CAMOUFOX_RELEASE = os.getenv("CAMOUFOX_BROWSER_RELEASE", "beta.28")
 CAMOUFOX_REPOSITORY = "https://github.com/daijro/camoufox/releases/download"
 MMDB_URL = "https://github.com/P3TERX/GeoLite.mmdb/releases/latest/download/GeoLite2-City.mmdb"
+CAMOUFOX_DOWNLOAD_CACHE = Path(
+    os.getenv("CAMOUFOX_DOWNLOAD_CACHE", "/root/.cache/camoufox-downloads")
+)
 
 
 def platform_architecture() -> str:
@@ -52,8 +57,11 @@ def download_with_resume(url: str, target: Path, attempts: int = 12) -> None:
         headers = {"Range": f"bytes={offset}-"} if offset else {}
         try:
             with requests.get(url, headers=headers, stream=True, timeout=(30, 120)) as response:
-                if response.status_code == 416 and expected_size == offset:
-                    return
+                if response.status_code == 416:
+                    content_range = response.headers.get("Content-Range", "")
+                    remote_size = int(content_range.rsplit("/", 1)[1]) if "/" in content_range else None
+                    if remote_size == offset:
+                        return
                 response.raise_for_status()
                 append = offset > 0 and response.status_code == 206
                 if not append:
@@ -79,6 +87,21 @@ def download_with_resume(url: str, target: Path, attempts: int = 12) -> None:
             time.sleep(min(attempt * 2, 15))
 
 
+class ResumableCamoufoxFetcher(CamoufoxFetcher):
+    @staticmethod
+    def download_file(file, url: str):
+        archive_name = Path(urlparse(url).path).name
+        archive_path = CAMOUFOX_DOWNLOAD_CACHE / archive_name
+        print(f"Downloading Camoufox with resume support: {url}", flush=True)
+        download_with_resume(url, archive_path)
+        file.seek(0)
+        with archive_path.open("rb") as archive:
+            shutil.copyfileobj(archive, file, length=1024 * 1024)
+        file.truncate()
+        file.seek(0)
+        return file
+
+
 def install_browser() -> None:
     architecture = platform_architecture()
     selected = AvailableVersion(
@@ -86,7 +109,7 @@ def install_browser() -> None:
         url=browser_asset_url(architecture),
         is_prerelease=True,
     )
-    CamoufoxFetcher(
+    ResumableCamoufoxFetcher(
         repo_config=RepoConfig.get_default(),
         selected_version=selected,
     ).install(replace=True)
